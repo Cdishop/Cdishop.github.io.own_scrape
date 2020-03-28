@@ -1,1 +1,1 @@
-# Cdishop.github.io.own_scrape
+Scraping my own website as a practice session. 

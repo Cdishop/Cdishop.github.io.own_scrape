@@ -1,0 +1,120 @@
+---
+title: "Example 3 - Scrape My Website"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, cache = T)
+```
+
+What if I want to scrape the computational notes on my own website? I need a for-loop to iterate over each page, and I'd like to end up with a data set containing the following for each page:
+
+* title
+
+* the text content.
+
+First, I need to scrape the links to direct my for-loop where to go.
+
+```{r}
+library(rvest)
+own_links_page <- read_html('https://christopherdishop.netlify.com/computational_notes/')
+own_links <- html_nodes(own_links_page, '.title a') %>%
+                            html_attr('href')
+
+head(own_links)
+```
+
+Now I have a vector of links directing me to relevant pages. Normally, the next step would be to use `read_html()` and specify one value within `own_links` to tell it where to go. That won't work here because the links stored within `own_links` are relative, and `read_html()` cannot handle relative paths. 
+
+So, in the next step I will use Hadley's `jump_to` function which can handle relative paths.
+
+Start on the link homepage, then use the first value stored within `own_links` to navigate to the first web page I want to scrape.
+
+```{r}
+# jump_to() requires a html_session rather than read_html page
+
+own_links_page <- html_session('https://christopherdishop.netlify.com/computational_notes/')
+
+scrape_page1 <- own_links_page %>%
+  jump_to(own_links[1])
+```
+
+Then, scrape the text within that post.
+
+```{r}
+html_node(scrape_page1, '.content.container p') %>% html_text  
+```
+
+Cool, everything works for a single page. Now iterate over every page and store the results in a data frame.
+
+```{r}
+library(tidyverse)
+
+df3 <- data.frame(
+  'page_title' = c(rep('store', length(own_links))),
+  'text' = c(rep('store', length(own_links)))
+
+  )
+
+df3 <- df3 %>%
+  mutate_if(is.factor, as.character)
+
+for(i in 1:length(own_links)){
+  Sys.sleep(0.5)
+  
+  navigate_page <- own_links_page %>%
+    jump_to(own_links[i])
+  
+  
+  title <- gsub('/computational_notes/', '', own_links[i])
+  title <- gsub('/', '', title)
+  text <- html_node(navigate_page, '.content.container p') %>% html_text
+  
+  df3[i, 'page_title'] <- title
+  df3[i, 'text'] <- text
+  
+}
+
+head(df3)
+
+```
+
+Awesome. How about the sentiment across the various posts?
+
+```{r}
+library(sentimentr)
+sent_df <- sentiment(df3$text)
+
+library(ggplot2)
+sent_df$title <- df3$page_title
+sent_df <- sent_df %>%
+  mutate(color = ifelse(sentiment < 0, 'negative', 'positive'))
+```
+
+Sentiment by post in order of date posted.
+
+```{r}
+
+ggplot(sent_df, aes(x = title, y = sentiment, fill = color)) + 
+  geom_bar(stat = 'identity') + 
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  theme(legend.title = element_blank())
+
+```
+
+Sentiment by post arranged by strength of sentiment.
+
+```{r}
+
+sent_df %>%
+  arrange(sentiment) %>%
+  mutate(ordered_titles = 1:nrow(sent_df)) %>%
+  ggplot(aes(x = ordered_titles, y = sentiment, fill = color)) + 
+  geom_bar(stat = 'identity') + 
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  theme(legend.title = element_blank())
+
+
+```
